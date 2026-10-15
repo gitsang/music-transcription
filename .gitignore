@@ -1,2 +1,13 @@
-# Agents
-.pi
+.pi/
+.env
+.env.*
+!.env.example
+.venv/
+.model-venv/
+data/
+models/
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+.pytest_cache/
+*.pyc

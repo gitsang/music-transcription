@@ -1,0 +1,13 @@
+# Torch/Torchaudio installed separately from CPU or cu118 index.
+# basic-pitch installed separately with --no-deps to avoid forced TensorFlow.
+setuptools==80.9.0
+demucs==4.1.0
+onnxruntime==1.22.0
+librosa==0.11.0
+numpy==1.26.4
+scipy==1.15.3
+soundfile==0.13.1
+mir-eval==0.8.2
+pretty-midi==0.2.10
+resampy==0.4.2
+scikit-learn==1.6.1
