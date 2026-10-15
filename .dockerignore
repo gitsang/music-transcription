@@ -1,0 +1,11 @@
+.git
+.pi
+.venv
+.model-venv
+.env
+models/
+data/
+frontend/node_modules/
+frontend/dist/
+**/__pycache__/
+**/.pytest_cache/

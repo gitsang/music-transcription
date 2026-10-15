@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "scope": "baseline only; multi_instrument and Tesla P4 are not validated",
+  "models": [
+    {
+      "id": "htdemucs_6s",
+      "code_version": "demucs 4.1.0",
+      "path": "demucs/5c90dfd2.th",
+      "url": "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/5c90dfd2-34c22ccb.th",
+      "sha256": "34c22ccb381c6f9fdbf324f04e1e2fe21aaaf293f5ded163a162697ff9a02ddd",
+      "license": "MIT (Demucs code repository; review upstream weight terms before redistribution)",
+      "source": "https://github.com/facebookresearch/demucs"
+    },
+    {
+      "id": "basic_pitch_onnx",
+      "code_version": "basic-pitch 0.4.0",
+      "path": "basic-pitch/nmp.onnx",
+      "url": "https://files.pythonhosted.org/packages/99/0e/3a36d22562daeb0ae3c78ac78da3f8dba96543c5576ed57d4acb8ddbab5b/basic_pitch-0.4.0-py2.py3-none-any.whl",
+      "wheel_member": "basic_pitch/saved_models/icassp_2022/nmp.onnx",
+      "sha256": "2c3c1d144bfa61ad236e92e169c13535c880469a12a047d4e73451f2c059a0ec",
+      "license": "Apache-2.0 (verify upstream distribution terms)",
+      "source": "https://github.com/spotify/basic-pitch"
+    }
+  ]
+}
