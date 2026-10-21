@@ -1,16 +1,8 @@
-fastapi==0.115.12
-uvicorn[standard]==0.34.2
-SQLAlchemy==2.0.40
-alembic==1.15.2
-psycopg[binary]==3.2.9
-celery[redis]==5.5.2
-argon2-cffi==23.1.0
-python-multipart==0.0.20
+# Python runtime for the transcription pipeline only. The API and task
+# scheduling are Go (cmd/musicd); FastAPI/Celery/alembic are no longer used.
 music21==9.7.1
 defusedxml==0.7.1
 numpy==1.26.4
 scipy==1.15.3
 soundfile==0.13.1
 mido==1.3.3
-httpx==0.28.1
-pytest==8.3.5
