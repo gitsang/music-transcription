@@ -2,7 +2,17 @@
 
 此记录描述实际执行的检查，不将产物生成成功等同于歌曲还原准确。阶段 B 的任意乐器识别、候选多乐器模型、Tesla P4 实测尚未完成。
 
-## 自动检查
+## Go 后端迁移验证（最新）
+
+后端改为 Go：账号、授权、上传、管理、outbox、dispatcher 和 worker 外壳在 `musicd`；模型、music21 和导出仍在 Python `pipeline.cli` 子进程。队列使用仓库内 Redis Streams 实现。
+
+- `cd backend && go test ./...` 在专用 PostgreSQL `mt-go-test-postgres` 与 Redis 上通过（未设置测试库时集成测试自动 skip）。覆盖 Go API 鉴权/同源/quota/Range、worker 租约与 fencing、MQ ACK/重投/DLQ/长任务续租/Close、producer 连接回归。
+- 既有生产 schema 与用户/会话表由 GORM 只增列迁移；`api/migrate/dispatcher/worker` 全部健康，`audio_ready=true`。
+- 真实音频（4 秒合成 WAV）经 Go dispatcher → Redis Stream → Go worker → Python 子进程完成：`succeeded`，2 个粗分类声部、6 条 Demucs 音轨、26 个产物，PDF 下载为有效 PDF，Range 返回 206。
+- MusicXML 导入经 Go API → Go worker → Python 流水线：`succeeded`，12 个产物；浏览器 本机部署地址 登录、OSMD 总谱渲染、播放及游标跟随正常。
+- 修复集成缺陷：dispatcher 的 MQ producer 未 Connect 导致任务永远 queued；nginx 缓存 API 容器 IP 导致重建后 502（改为 Docker DNS 动态解析）。
+
+## 阶段 A 自动检查（Python 时代）
 
 - 后端 `PYTHONPATH=backend .venv/bin/pytest backend/tests -q`：28 项通过。涵盖审核/登录/同源请求、资源归属、Range、quota、outbox、租约领取与旧 token 写回、取消、删除、独立 stem ID、部分成功、期限计算、文件锁、实体与压缩 XML 防护、tempo map、全部鼓件 MusicXML 通道 10 和 MIDI 鼓映射。
 - 前端 `npm run build`：TypeScript 与 Vite 构建通过。OSMD bundle 较大，已拆为延迟加载块，构建给出体积提示。

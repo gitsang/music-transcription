@@ -1,6 +1,6 @@
 # 音谱 · 本地音乐转谱服务
 
-React / TypeScript + FastAPI + PostgreSQL + Celery / Redis。用户上传完整音频或 MusicXML，后台处理，浏览器查看总谱与分谱、对照试听和下载。音频由本地模型处理，不调用云端推理 API。管理员能查看、播放、下载全部用户文件；普通用户只能访问自己的任务。
+React / TypeScript + Go + PostgreSQL + Redis Streams。Python 仅保留本地模型与乐谱处理流水线。用户上传完整音频或 MusicXML，后台处理，浏览器查看总谱与分谱、对照试听和下载。音频由本地模型处理，不调用云端推理 API。管理员能查看、播放、下载全部用户文件；普通用户只能访问自己的任务。
 
 当前实现设计阶段 A 的 baseline Demo，**尚未完成任意乐器 / 全声部自动识别**。Demucs `htdemucs_6s` 提供六类混合分离，Basic Pitch 识别有音高事件，鼓使用频带 onset 近似检测。类别来自分离器而非乐器识别模型；`other` 标为未知/混合，置信度为空。`multi_instrument` 显示未就绪，不会接受任务。Tesla P4 尚未实机验证。
 
@@ -27,7 +27,7 @@ python3 scripts/prepare-models.py --download
 # 模型准备动作只下载公开权重，不读取用户音频；校验 SHA256。
 docker compose up -d --build
 # 通过交互式隐藏输入设置管理员密码，至少 12 个字符，无默认管理员账号。
-docker compose exec api python -m app.cli init-admin --username admin
+docker compose exec api musicd init-admin --username admin
 ```
 
 打开 `http://localhost:8080`。管理员先登录，其他用户自行注册，管理员在「账号审核」批准后可登录。没有模型时账号和 MusicXML 功能仍可运行，音频上传会返回 `MODEL_NOT_READY`。
@@ -45,8 +45,8 @@ python3 scripts/prepare-models.py \
 ```bash
 docker compose ps
 docker compose logs -f worker dispatcher
-docker compose exec api python -m app.cli health --role api
-docker compose exec worker python -m app.cli health --role worker
+docker compose exec api musicd health --role api
+docker compose exec worker musicd health --role worker
 # 保留持久卷与 data，重启不删除结果。
 docker compose down
 docker compose up -d
@@ -76,7 +76,7 @@ override 只替换同一个 worker。候选组合为 Torch / Torchaudio 2.5.1 + 
 
 ## 本地开发与测试
 
-Python 3.11，Node 22.14+，FFmpeg / ffprobe、FluidSynth、MuseScore 3、GM SoundFont。模型依赖使用独立 Python venv，避免 Basic Pitch 强制安装 TensorFlow。
+Go 1.24+，Python 3.11（仅流水线），Node 22.14+，FFmpeg / ffprobe、FluidSynth、MuseScore 3、GM SoundFont。模型依赖使用独立 Python venv，避免 Basic Pitch 强制安装 TensorFlow。
 
 ```bash
 uv venv --python 3.11 .venv
@@ -86,14 +86,12 @@ uv pip install --python .model-venv/bin/python torch==2.5.1 torchaudio==2.5.1 \
   --index-url https://download.pytorch.org/whl/cpu
 uv pip install --python .model-venv/bin/python -r backend/requirements-models.txt
 uv pip install --python .model-venv/bin/python --no-deps basic-pitch==0.4.0
-PYTHONPATH=backend .venv/bin/pytest backend/tests -q
-cd frontend
-npm ci
-npm run build
-npm test
+(cd frontend && npm ci)
+make test          # Go backend, Python pipeline and frontend
+make build         # binary at .builds/bin/musicd
 ```
 
-本地服务分别启动：`uvicorn app.main:app`、`celery -A app.worker:celery_app worker --concurrency=1`、`python -m app.cli dispatcher`（均设置 `PYTHONPATH=backend`），前端 `npm run dev`。先设置 PostgreSQL `DATABASE_URL`、`REDIS_URL`、可写 `DATA_DIR`、`PUBLIC_ORIGIN` 和开发用 `COOKIE_SECURE=false`，运行 `python -m app.cli migrate` / `init-admin`。前端代理默认 `http://127.0.0.1:8000`，可由 `API_PROXY_TARGET` 覆盖。
+本地开发需要 Go 1.24+、Python 3.11 与前端 Node。`cd backend && go build -o /tmp/musicd ./cmd/musicd`，分别启动 `/tmp/musicd api`、`/tmp/musicd worker`、`/tmp/musicd dispatcher`；先设置 `DATABASE_URL`、`REDIS_URL`、`DATA_DIR`、`PUBLIC_ORIGIN`、`COOKIE_SECURE=false` 与 `PIPELINE_PYTHON`，并运行 `/tmp/musicd migrate` / `init-admin`。前端 `npm run dev`，代理默认 `http://127.0.0.1:8000`，可由 `API_PROXY_TARGET` 覆盖。worker 的 `PIPELINE_PYTHON` 必须能 import `pipeline.cli`。
 
 模型运行环境变量：`MODEL_PYTHON` 为模型 venv 绝对路径，`DEMUCS_REPO`、`BASIC_PITCH_MODEL_PATH` 指向已准备的模型，`SOUNDFONT_PATH` 指向 `.sf2`，`MUSESCORE_BIN=musescore3`。API 不需要安装 Torch。依赖主版本已锁定；完整可重现性还受系统包、传递依赖和镜像补丁影响，部署应保存构建镜像 digest。
 

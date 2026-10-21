@@ -8,7 +8,8 @@
 | Basic Pitch 0.4.0 / ICASSP 2022 ONNX | https://github.com/spotify/basic-pitch | 上游 Apache-2.0；权重提取自同版公开 wheel，不随仓库提交 |
 | music21 9.7.1 | https://github.com/cuthbertLab/music21 | 上游 BSD；只使用转换能力，不随本服务再发布其示例音乐 |
 | OpenSheetMusicDisplay | https://github.com/opensheetmusicdisplay/opensheetmusicdisplay | BSD-3-Clause；npm 安装，构建后本地提供 |
-| React / FastAPI | 各上游仓库与包元数据 | MIT |
+| React / Go / GORM / pgx | 各上游仓库与包元数据 | MIT / BSD / Apache-2.0，按 go.sum 核对 |
+| pkg/mq Redis Streams | 仓库内实现 | 只依赖 go-redis 与 google/uuid，详见 backend/pkg/mq/README.md |
 | MuseScore 3 | Debian musescore3 软件包 | GPL；容器保留系统 /usr/share/doc 版权文件，源码按 Debian 包入口获取 |
 | FluidSynth | Debian fluidsynth 软件包 | LGPL；保留系统包版权说明 |
 | TimGM6mb SoundFont | Debian timgm6mb-soundfont | Debian 包版权记录；容器复制原版权到 /soundfonts/LICENSE，音色无第三方 CDN 请求 |

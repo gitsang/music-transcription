@@ -14,7 +14,7 @@
 | 项目 | 决定 |
 | --- | --- |
 | 前端 | React + TypeScript |
-| 后端 | Python + FastAPI，耗时处理由独立 worker 执行 |
+| 后端 | Go（HTTP API、授权、调度与 worker 外壳）；Python 仅运行本地模型与乐谱流水线 |
 | 输入 | 文件上传，不做歌曲链接导入；完整歌曲音频及已有 MusicXML |
 | 扒谱目标 | 自动识别乐器，输出包含所有可识别声部的乐队总谱 |
 | 无法识别的乐器 | 保留音符，标记为「未知乐器」 |
@@ -70,11 +70,11 @@
 web：静态前端 + Nginx 反向代理（公网唯一入口）
           │ /api
           ▼
-api：FastAPI ─────────── PostgreSQL（用户、任务、产物、配置、审计）
+api：Go ──────────────── PostgreSQL（用户、任务、产物、配置、审计）
           │                         ▲
           │ 入队                     │ 状态、阶段、心跳
           ▼                         │
-Redis（Celery broker） ─────── worker：本地音频/模型/导出流水线
+Redis Streams（本地 redismq） ─ worker → Python 音频/模型/导出流水线
                                       │
 api（授权后提供文件） ─────────────── 私有数据卷
                                       │
@@ -88,9 +88,9 @@ api（授权后提供文件） ─────────────── 私
 | 前端 | Vite + React + TypeScript，React Router、TanStack Query | Query 管理任务状态；Demo 使用轮询即可，不必先做 WebSocket |
 | 乐谱渲染 | OpenSheetMusicDisplay（OSMD） | 只负责谱面渲染与游标，不假设它自带完整音频播放器 |
 | 播放 | HTMLAudioElement + 统一 transport 控制器 | 后端预生成合成音频；避免 Demo 同时实现一套浏览器 MIDI 合成器 |
-| API | FastAPI + Pydantic + SQLAlchemy + Alembic | 建议 Python 3.11 起步，最终版本以依赖安装验证为准 |
+| API | Go 标准库 net/http + GORM | 与既有 PostgreSQL schema 兼容；见 README |
 | 数据库 | PostgreSQL | 作为权限、任务状态与配置的唯一权威来源 |
-| 队列 | Celery + Redis | Demo 默认一个推理并发，后续可拆 GPU/CPU 队列 |
+| 队列 | 仓库内 Redis Streams 实现 | 数据库 outbox 仍为权威来源；默认一个推理并发 |
 | 音频处理 | FFmpeg/ffprobe | 解码、真实时长检测、重采样、试听格式转换 |
 | 记谱转换 | music21 | MusicXML/MIDI 读写及总谱、分谱导出 |
 | 合成 | FluidSynth + 本地、许可允许再分发的 GM SoundFont | 生成 WAV 归档、MP3 或其他经浏览器验证的试听格式；注意鼓通道 |
@@ -141,7 +141,7 @@ class TranscriptionEngine:
 - 分块/重叠推理、按任务串行加载模型以控制显存；拼接时修正绝对时间、去重，不能让每块的时间都从零开始。
 - OOM 可按确定策略缩小分块重试，仍失败则明确失败；不得静默换低质量模型。
 - CPU 部署必须能运行真实流水线，不仅是打开网页；允许明显更慢。CPU/GPU 是否使用同一模型及降级差异必须公开。
-- 默认 `WORKER_CONCURRENCY=1`、Celery prefetch 1。限制科学计算库线程数，避免多进程争抢 P4 或 CPU。
+- 默认 `WORKER_CONCURRENCY=1`，Redis Streams 每个 worker 一个 consumer。限制科学计算库线程数，避免多进程争抢 P4 或 CPU。
 
 Basic Pitch、Demucs、多乐器模型可能存在互不兼容的依赖。接手时先做安装和短音频推理验证；必要时在同一 worker 镜像内用独立 venv/子进程隔离，不强行拼装一个无法安装的 requirements 文件。
 
@@ -275,7 +275,7 @@ Basic Pitch、Demucs、多乐器模型可能存在互不兼容的依赖。接手
 ### 8.2 队列可靠性
 
 - 上传先保存为私有临时文件并校验。在同一数据库事务中锁定用户，检查 queued/running 数量、创建任务和 outbox 事件，避免并行请求绕过「3 个任务」。失败临时文件要清理。
-- outbox 调度器将任务 ID/attempt 发给 Celery，解决数据库提交成功但 Redis 入队失败的问题；部署中包含单个调度维护进程。
+- outbox 调度器将任务 ID/attempt 投递到 Redis Streams，解决数据库提交成功但入队失败的问题；部署中包含单个调度维护进程。
 - FIFO 非抢占队列即可做 Demo，默认一个 worker 并发；每用户上限防止大量预占，不额外实现复杂调度算法。
 - 消息只携带任务 ID，不含可信度不足的路径或命令。worker 从数据库读取配置和真实文件。
 - worker 原子领取任务并记录 lease/心跳。重复投递、服务重启不得同时处理同一个 attempt。
@@ -355,7 +355,7 @@ Basic Pitch、Demucs、多乐器模型可能存在互不兼容的依赖。接手
 ```text
 frontend/                 # React + TypeScript
 backend/
-  app/                    # FastAPI、数据模型、授权、队列维护
+  cmd/ internal/           # Go API、数据模型、授权、队列维护
   pipeline/               # engine 适配器、note events、导出及时间线
   tests/
 Containerfile             # 多阶段构建 web/runtime；CPU 默认，GPU 可构建独立 target/参数
@@ -385,7 +385,7 @@ docs/design.md
 
 ### 阶段 A：先打通可真实演示的垂直链路
 
-1. 建立 React/FastAPI/数据库/队列骨架，完成管理员初始化、注册审核、登录及归属授权。
+1. 建立 React/Go/数据库/队列骨架，完成管理员初始化、注册审核、登录及归属授权。
 2. **先实现已有 MusicXML 导入 → 渲染 → 合成播放 → 分谱/MIDI/PDF 下载。** 用于快速验证播放器、音色、PDF 容器依赖和文件访问。
 3. 接入音频上传、时长和任务上限校验、持久队列、真实 baseline 扒谱，生成总谱/分谱/MIDI。
 4. 接入原曲、真实分离音轨、合成音频及时间线；实现所有可用产物下载及部分失败展示。
@@ -433,4 +433,4 @@ docs/design.md
 
 按本文做一个可运行、可演示的版本，不再追问细粒度记谱规则。优先完成 MusicXML 导入与播放的垂直链路，再接入真实音频扒谱。复用参考工程的分析和转换思路，但去掉全部单曲常量与人工注入内容。
 
-React + TypeScript、Python + FastAPI、本地推理、多账号审核、队列和私有文件访问是确定范围。基础分离+Basic Pitch 只构成有限能力 Demo；任意乐器/全声部自动识别仍需验证本地多乐器模型。将真实进度、失败和降级展示给用户。交付 Containerfile、CPU compose.yml、建议的 GPU override、运行说明和测试记录；不要承诺尚未实测的准确度或 Tesla P4 性能。
+React + TypeScript、Go 后端、Python 本地推理流水线、多账号审核、队列和私有文件访问是确定范围。基础分离+Basic Pitch 只构成有限能力 Demo；任意乐器/全声部自动识别仍需验证本地多乐器模型。将真实进度、失败和降级展示给用户。交付 Containerfile、CPU compose.yml、建议的 GPU override、运行说明和测试记录；不要承诺尚未实测的准确度或 Tesla P4 性能。
