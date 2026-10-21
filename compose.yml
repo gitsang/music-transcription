@@ -6,12 +6,14 @@ x-app: &app
     target: runtime
   image: music-transcription-api:local
   environment: &environment
-    DATABASE_URL: postgresql+psycopg://music:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres/music
+    DATABASE_URL: postgresql://music:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres/music?sslmode=disable
     REDIS_URL: redis://redis:6379/0
     DATA_DIR: /data
     PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:8080}
     COOKIE_SECURE: ${COOKIE_SECURE:-false}
     MODEL_PYTHON: /opt/models-venv/bin/python
+    PIPELINE_PYTHON: /usr/local/bin/python
+    LISTEN_ADDR: :8000
     DEMUCS_REPO: /models/demucs
     BASIC_PITCH_MODEL_PATH: /models/basic-pitch/nmp.onnx
     SOUNDFONT_PATH: /soundfonts/default.sf2
@@ -25,7 +27,7 @@ x-app: &app
     OPENBLAS_NUM_THREADS: 2
     MKL_NUM_THREADS: 2
     HF_HUB_OFFLINE: 1
-  volumes:
+  volumes: &app-volumes
     - ${DATA_PATH:-./data}:/data
     - ${MODELS_PATH:-./models}:/models:ro
   networks: [private]
@@ -68,16 +70,16 @@ services:
       retries: 10
   migrate:
     <<: *app
-    command: [python, -m, app.cli, migrate]
+    command: [migrate]
     restart: 'no'
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
   api:
     <<: *app
-    command: [uvicorn, 'app.main:app', --host, 0.0.0.0, --port, '8000', --no-proxy-headers]
+    command: [api]
     healthcheck:
-      test: [CMD, python, -m, app.cli, health, --role, api]
+      test: [CMD, musicd, health, --role, api]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -88,18 +90,18 @@ services:
       context: .
       dockerfile: Containerfile
       target: worker-cpu
-    command: [celery, -A, 'app.worker:celery_app', worker, --loglevel=INFO]
+    command: [musicd, worker]
     healthcheck:
-      test: [CMD, python, -m, app.cli, health, --role, worker]
+      test: [CMD, musicd, health, --role, worker]
       interval: 30s
       timeout: 10s
       start_period: 60s
       retries: 5
   dispatcher:
     <<: *app
-    command: [python, -m, app.cli, dispatcher]
+    command: [dispatcher]
     healthcheck:
-      test: [CMD, python, -m, app.cli, health, --role, dispatcher]
+      test: [CMD, musicd, health, --role, dispatcher]
       interval: 30s
       timeout: 10s
       retries: 5
