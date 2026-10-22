@@ -44,6 +44,7 @@ x-app: &app
 
 services:
   postgres:
+    container_name: music-transcription-postgres
     image: postgres:16.8-alpine
     environment:
       POSTGRES_DB: music
@@ -58,6 +59,7 @@ services:
       timeout: 3s
       retries: 10
   redis:
+    container_name: music-transcription-redis
     image: redis:7.4.2-alpine
     command: [redis-server, --appendonly, 'yes']
     volumes: [redis-data:/data]
@@ -70,6 +72,7 @@ services:
       retries: 10
   migrate:
     <<: *app
+    container_name: music-transcription-migrate
     command: [migrate]
     restart: 'no'
     depends_on:
@@ -77,6 +80,7 @@ services:
       redis: {condition: service_healthy}
   api:
     <<: *app
+    container_name: music-transcription-api
     command: [api]
     healthcheck:
       test: [CMD, musicd, health, --role, api]
@@ -85,12 +89,13 @@ services:
       retries: 5
   worker:
     <<: *app
+    container_name: music-transcription-worker
     image: music-transcription-worker-cpu:local
     build:
       context: .
       dockerfile: Containerfile
       target: worker-cpu
-    command: [musicd, worker]
+    command: [worker]
     healthcheck:
       test: [CMD, musicd, health, --role, worker]
       interval: 30s
@@ -99,6 +104,7 @@ services:
       retries: 5
   dispatcher:
     <<: *app
+    container_name: music-transcription-dispatcher
     command: [dispatcher]
     healthcheck:
       test: [CMD, musicd, health, --role, dispatcher]
@@ -106,6 +112,7 @@ services:
       timeout: 10s
       retries: 5
   web:
+    container_name: music-transcription-web
     build:
       context: .
       dockerfile: Containerfile

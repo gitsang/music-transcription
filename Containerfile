@@ -30,6 +30,7 @@ RUN groupadd --gid 10001 music && useradd --uid 10001 --gid music --create-home 
     && mkdir -p /data /models && chown -R music:music /data /models /app
 ENV SOUNDFONT_PATH=/soundfonts/default.sf2 MUSESCORE_BIN=musescore3 PIPELINE_PYTHON=/usr/local/bin/python
 USER music
+ENTRYPOINT ["/usr/local/bin/musicd"]
 HEALTHCHECK --interval=30s --timeout=10s CMD ["musicd", "health", "--role", "api"]
 
 # API/migrate/dispatcher are Go-only: no Torch, model venv or Python runtime.
@@ -57,7 +58,7 @@ ENV MODEL_PYTHON=/opt/models-venv/bin/python INFERENCE_DEVICE=cpu \
     DEMUCS_REPO=/models/demucs BASIC_PITCH_MODEL_PATH=/models/basic-pitch/nmp.onnx HF_HUB_OFFLINE=1
 USER music
 HEALTHCHECK --interval=30s --timeout=10s CMD ["musicd", "health", "--role", "worker"]
-CMD ["musicd", "worker"]
+CMD ["worker"]
 
 FROM go-runtime AS runtime
 
@@ -74,7 +75,7 @@ ENV MODEL_PYTHON=/opt/models-venv/bin/python INFERENCE_DEVICE=cuda \
     DEMUCS_REPO=/models/demucs BASIC_PITCH_MODEL_PATH=/models/basic-pitch/nmp.onnx HF_HUB_OFFLINE=1
 USER music
 HEALTHCHECK --interval=30s --timeout=10s CMD ["musicd", "health", "--role", "worker"]
-CMD ["musicd", "worker"]
+CMD ["worker"]
 
 FROM nginxinc/nginx-unprivileged:1.27.5-alpine AS web
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
